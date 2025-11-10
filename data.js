@@ -263,23 +263,26 @@
   /**
    * 🔧 Función auxiliar para dividir un array en sub-arrays de tamaño máximo
    * Asegura que cada sub-array quepa en el límite de 100KB del cache
+   * Optimizado: usa longitud de string como estimación rápida (más rápido que Utilities.newBlob)
    */
-  function dividirArrayEnChunks(arr, maxSizeKB = 75) {
+  function dividirArrayEnChunks(arr, maxSizeKB = 85) {
     if (!arr || arr.length === 0) return [arr];
 
     const subChunks = [];
     let currentChunk = [];
+    const maxBytes = maxSizeKB * 1024;
 
     for (let i = 0; i < arr.length; i++) {
       currentChunk.push(arr[i]);
 
-      // Verificar cada 10 elementos o si ya tenemos 100+ elementos
-      if (currentChunk.length % 10 === 0 || currentChunk.length >= 100) {
+      // Verificar cada 20 elementos o si ya tenemos 100+ elementos
+      if (currentChunk.length % 20 === 0 || currentChunk.length >= 100) {
         const testJson = JSON.stringify(currentChunk);
-        const sizeKB = Utilities.newBlob(testJson).getBytes().length / 1024;
+        // Estimación rápida: length de string ≈ bytes (suficientemente preciso)
+        const estimatedBytes = testJson.length;
 
         // Si excede el límite, guardar el chunk anterior y empezar uno nuevo
-        if (sizeKB > maxSizeKB) {
+        if (estimatedBytes > maxBytes) {
           // Remover el último elemento y guardar el chunk
           const ultimo = currentChunk.pop();
 
@@ -349,17 +352,22 @@
       chunks.push({ type: 'potenciales', data: data.potenciales });
       chunks.push({ type: 'sucursales', data: data.sucursales });
 
-      // Guardar cada chunk
+      // Guardar cada chunk (optimizado - sin calcular tamaño)
       let savedChunks = 0;
+      Logger.log(`💾 Guardando ${chunks.length} chunks en cache...`);
+
       for (let i = 0; i < chunks.length; i++) {
         try {
           const chunkKey = `ALL_DATA_${version}_${i}`;
           const chunkJson = JSON.stringify(chunks[i]);
-          const chunkSizeKB = (Utilities.newBlob(chunkJson).getBytes().length / 1024).toFixed(2);
 
           cache.put(chunkKey, chunkJson, duration);
           savedChunks++;
-          Logger.log(`💾 Chunk ${i} (${chunks[i].type}) guardado (${chunkSizeKB} KB)`);
+
+          // Solo logear cada 5 chunks para no saturar logs
+          if (i % 5 === 0 || i === chunks.length - 1) {
+            Logger.log(`💾 Guardados ${savedChunks}/${chunks.length} chunks...`);
+          }
         } catch (e) {
           Logger.log(`⚠️ Error guardando chunk ${i}: ${e.message}`);
         }
