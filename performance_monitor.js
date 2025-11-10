@@ -349,3 +349,131 @@ function compararTamanioDatos() {
 
   Logger.log("=".repeat(60));
 }
+
+/**
+ * 🧪 TEST DE FILTRADO DUAL (CLIENTES vs ASESORES)
+ * Verifica que el sistema de filtrado dual funcione correctamente:
+ * - Modo clientes: solo clientes con contactos válidos
+ * - Modo asesores: todos los clientes con máquinas críticas
+ */
+function testFiltradoDual() {
+  Logger.log("=".repeat(60));
+  Logger.log("🧪 TEST DE FILTRADO DUAL (CLIENTES vs ASESORES)");
+  Logger.log("=".repeat(60));
+
+  limpiarCacheDatos();
+
+  // Cargar datos para CLIENTES (solo con contactos)
+  Logger.log("\n📧 Modo CLIENTES (soloClientesConContactos: true):");
+  const start1 = Date.now();
+  const dataClientes = getAllDataCached({ soloClientesConContactos: true });
+  const time1 = ((Date.now() - start1) / 1000).toFixed(2);
+
+  const clientesConContactos = Object.keys(dataClientes.clientes).length;
+  const maquinasClientes = dataClientes.horometro.length;
+
+  Logger.log(`✅ Cargado en ${time1}s`);
+  Logger.log(`🏢 Clientes: ${clientesConContactos}`);
+  Logger.log(`🔧 Máquinas: ${maquinasClientes}`);
+
+  // Cargar datos para ASESORES (todos los clientes con máquinas)
+  Logger.log("\n👥 Modo ASESORES (soloClientesConContactos: false):");
+  const start2 = Date.now();
+  const dataAsesores = getAllDataCached({ soloClientesConContactos: false });
+  const time2 = ((Date.now() - start2) / 1000).toFixed(2);
+
+  const clientesTotales = Object.keys(dataAsesores.clientes).length;
+  const maquinasAsesores = dataAsesores.horometro.length;
+
+  Logger.log(`✅ Cargado en ${time2}s (desde cache)`);
+  Logger.log(`🏢 Clientes: ${clientesTotales}`);
+  Logger.log(`🔧 Máquinas: ${maquinasAsesores}`);
+
+  // Comparación
+  const clientesSinContactos = clientesTotales - clientesConContactos;
+  const maquinasSinContactos = maquinasAsesores - maquinasClientes;
+
+  Logger.log("\n" + "=".repeat(60));
+  Logger.log("🎯 COMPARACIÓN:");
+  Logger.log("=".repeat(60));
+  Logger.log(`📊 Clientes sin contactos válidos: ${clientesSinContactos}`);
+  Logger.log(`🔧 Máquinas de clientes sin contactos: ${maquinasSinContactos}`);
+  Logger.log(`\n💡 Los asesores ven ${maquinasSinContactos} máquinas adicionales`);
+  Logger.log(`   que no se incluyen en correos a clientes`);
+
+  if (clientesSinContactos > 0) {
+    Logger.log(`\n✅ CORRECTO: Sistema de filtrado dual funcionando`);
+    Logger.log(`   - Clientes reciben correos solo si tienen contactos válidos`);
+    Logger.log(`   - Asesores ven TODAS las máquinas críticas/desconectadas`);
+  } else {
+    Logger.log(`\n⚠️ AVISO: Todos los clientes tienen contactos válidos`);
+  }
+
+  Logger.log("=".repeat(60));
+}
+
+/**
+ * 🧪 TEST DE AGRUPACIONES COMPLETAS
+ * Prueba las funciones de agrupación y verifica que:
+ * - getMachinesGroupedByClient use filtrado de clientes
+ * - getMachinesGroupedByAsesor incluya todas las máquinas
+ */
+function testAgrupacionesCompletas() {
+  Logger.log("=".repeat(60));
+  Logger.log("🧪 TEST DE AGRUPACIONES COMPLETAS");
+  Logger.log("=".repeat(60));
+
+  limpiarCacheDatos();
+
+  // Test 1: Agrupación por cliente
+  Logger.log("\n📧 Agrupación por CLIENTE:");
+  const start1 = Date.now();
+  const gruposClientes = getMachinesGroupedByClient("ambos");
+  const time1 = ((Date.now() - start1) / 1000).toFixed(2);
+
+  let totalMaquinasClientes = 0;
+  gruposClientes.forEach(g => {
+    totalMaquinasClientes += g.maquinas.length;
+  });
+
+  Logger.log(`✅ Procesado en ${time1}s`);
+  Logger.log(`🏢 Clientes agrupados: ${gruposClientes.length}`);
+  Logger.log(`🔧 Total máquinas: ${totalMaquinasClientes}`);
+
+  // Test 2: Agrupación por asesor
+  Logger.log("\n👥 Agrupación por ASESOR:");
+  const start2 = Date.now();
+  const gruposAsesores = getMachinesGroupedByAsesor();
+  const time2 = ((Date.now() - start2) / 1000).toFixed(2);
+
+  let totalMaquinasAsesores = 0;
+  gruposAsesores.forEach(g => {
+    totalMaquinasAsesores += g.maquinas_mto.length + g.maquinas_reco.length;
+  });
+
+  Logger.log(`✅ Procesado en ${time2}s (desde cache)`);
+  Logger.log(`🧑‍💼 Asesores agrupados: ${gruposAsesores.length}`);
+  Logger.log(`🔧 Total máquinas: ${totalMaquinasAsesores}`);
+
+  // Comparación
+  const diferenciaMaquinas = totalMaquinasAsesores - totalMaquinasClientes;
+
+  Logger.log("\n" + "=".repeat(60));
+  Logger.log("🎯 COMPARACIÓN:");
+  Logger.log("=".repeat(60));
+  Logger.log(`📊 Máquinas en correos a clientes: ${totalMaquinasClientes}`);
+  Logger.log(`📊 Máquinas en reportes a asesores: ${totalMaquinasAsesores}`);
+  Logger.log(`📊 Diferencia: ${diferenciaMaquinas} máquinas`);
+
+  if (diferenciaMaquinas > 0) {
+    Logger.log(`\n✅ CORRECTO: Asesores ven ${diferenciaMaquinas} máquinas adicionales`);
+    Logger.log(`   (de clientes sin contactos válidos)`);
+  } else if (diferenciaMaquinas === 0) {
+    Logger.log(`\n⚠️ AVISO: Mismo número de máquinas en ambos modos`);
+    Logger.log(`   (posiblemente todos los clientes tienen contactos)`);
+  } else {
+    Logger.log(`\n❌ ERROR: Asesores deberían ver MÁS o IGUAL máquinas que clientes`);
+  }
+
+  Logger.log("=".repeat(60));
+}
