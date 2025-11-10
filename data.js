@@ -212,7 +212,7 @@
         try {
           const chunkKey = `ALL_DATA_${version}_${i}`;
           const chunkJson = JSON.stringify(chunks[i]);
-          const chunkSizeKB = (new Blob([chunkJson]).getSize() / 1024).toFixed(2);
+          const chunkSizeKB = (Utilities.newBlob(chunkJson).getBytes().length / 1024).toFixed(2);
 
           cache.put(chunkKey, chunkJson, duration);
           savedChunks++;

@@ -300,13 +300,14 @@ function compararTamanioDatos() {
   const timeSin = ((Date.now() - startSin) / 1000).toFixed(2);
 
   // Calcular tamaño aproximado en KB
-  const sizeSin = new Blob([JSON.stringify({
+  const jsonSin = JSON.stringify({
     horometro: horometroCompleto,
     contactos: contactosCompletos,
     asesores: todosAsesores,
     clientes: todosClientes,
     sucursales: todasSucursales
-  })]).getSize() / 1024;
+  });
+  const sizeSin = Utilities.newBlob(jsonSin).getBytes().length / 1024;
 
   Logger.log(`✅ Cargado en ${timeSin}s`);
   Logger.log(`📦 Horómetro: ${horometroCompleto.length} registros`);
@@ -321,7 +322,8 @@ function compararTamanioDatos() {
   const dataOptimizada = getAllData();
   const timeCon = ((Date.now() - startCon) / 1000).toFixed(2);
 
-  const sizeCon = new Blob([JSON.stringify(dataOptimizada)]).getSize() / 1024;
+  const jsonCon = JSON.stringify(dataOptimizada);
+  const sizeCon = Utilities.newBlob(jsonCon).getBytes().length / 1024;
 
   Logger.log(`✅ Cargado en ${timeCon}s`);
   Logger.log(`💾 Tamaño: ${sizeCon.toFixed(2)} KB`);
