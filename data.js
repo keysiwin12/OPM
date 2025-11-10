@@ -169,7 +169,15 @@
         Logger.log(`📦 Datos encontrados en cache (${meta.chunks} partes)`);
 
         // Reconstruir datos desde múltiples entradas
-        data = {};
+        data = {
+          horometro: [],
+          contactos: [],
+          asesores: {},
+          clientes: {},
+          potenciales: [],
+          sucursales: {}
+        };
+
         for (let i = 0; i < meta.chunks; i++) {
           const chunkKey = `ALL_DATA_${CACHE_VERSION}_${i}`;
           const chunkData = cache.get(chunkKey);
@@ -177,11 +185,28 @@
             Logger.log(`⚠️ Falta chunk ${i}, recargando todo...`);
             return loadAndCacheData(cache, CACHE_VERSION, CACHE_DURATION, options);
           }
+
           const chunk = JSON.parse(chunkData);
-          Object.assign(data, chunk);
+
+          // Reconstruir según el tipo de chunk
+          if (chunk.type === 'horometro') {
+            data.horometro = data.horometro.concat(chunk.data);
+          } else if (chunk.type === 'contactos') {
+            data.contactos = data.contactos.concat(chunk.data);
+          } else if (chunk.type === 'asesores') {
+            data.asesores = chunk.data;
+          } else if (chunk.type === 'clientes') {
+            data.clientes = chunk.data;
+          } else if (chunk.type === 'potenciales') {
+            data.potenciales = chunk.data;
+          } else if (chunk.type === 'sucursales') {
+            data.sucursales = chunk.data;
+          }
         }
 
         Logger.log("✅ Datos cargados desde cache particionado");
+        Logger.log(`   - Horometro: ${data.horometro.length} registros`);
+        Logger.log(`   - Contactos: ${data.contactos.length} registros`);
       } catch (e) {
         Logger.log(`⚠️ Error leyendo cache: ${e.message}`);
         return loadAndCacheData(cache, CACHE_VERSION, CACHE_DURATION, options);
@@ -236,8 +261,44 @@
   }
 
   /**
+   * 🔧 Función auxiliar para dividir un array en sub-arrays de tamaño máximo
+   * Asegura que cada sub-array quepa en el límite de 100KB del cache
+   */
+  function dividirArrayEnChunks(arr, maxSizeKB = 90) {
+    if (!arr || arr.length === 0) return [arr];
+
+    const subChunks = [];
+    let currentChunk = [];
+
+    for (let i = 0; i < arr.length; i++) {
+      currentChunk.push(arr[i]);
+
+      // Cada 50 elementos, verificar tamaño
+      if (currentChunk.length % 50 === 0) {
+        const testJson = JSON.stringify(currentChunk);
+        const sizeKB = Utilities.newBlob(testJson).getBytes().length / 1024;
+
+        if (sizeKB > maxSizeKB) {
+          // Remover el último elemento y guardar el chunk
+          const ultimo = currentChunk.pop();
+          subChunks.push([...currentChunk]);
+          currentChunk = [ultimo];
+        }
+      }
+    }
+
+    // Guardar el último chunk si tiene datos
+    if (currentChunk.length > 0) {
+      subChunks.push(currentChunk);
+    }
+
+    return subChunks.length > 0 ? subChunks : [arr];
+  }
+
+  /**
    * 🔧 Función auxiliar para cargar y cachear datos en partes
    * SIEMPRE cachea la versión SIN filtrar (más completa)
+   * Divide arrays grandes en sub-chunks para evitar límite de 100KB
    */
   function loadAndCacheData(cache, version, duration, options) {
     Logger.log("📊 Cargando datos desde Sheets (esto puede tardar)...");
@@ -251,13 +312,37 @@
     try {
       const chunks = [];
 
-      // Separar cada tipo de dato en su propio chunk
-      chunks.push({ horometro: data.horometro });
-      chunks.push({ contactos: data.contactos });
-      chunks.push({ asesores: data.asesores });
-      chunks.push({ clientes: data.clientes });
-      chunks.push({ potenciales: data.potenciales });
-      chunks.push({ sucursales: data.sucursales });
+      // 🚀 Dividir arrays grandes en sub-chunks
+      const horometroChunks = dividirArrayEnChunks(data.horometro);
+      const contactosChunks = dividirArrayEnChunks(data.contactos);
+
+      Logger.log(`📦 Dividiendo datos: horometro en ${horometroChunks.length} partes, contactos en ${contactosChunks.length} partes`);
+
+      // Agregar sub-chunks de horometro
+      horometroChunks.forEach((subChunk, idx) => {
+        chunks.push({
+          type: 'horometro',
+          index: idx,
+          total: horometroChunks.length,
+          data: subChunk
+        });
+      });
+
+      // Agregar sub-chunks de contactos
+      contactosChunks.forEach((subChunk, idx) => {
+        chunks.push({
+          type: 'contactos',
+          index: idx,
+          total: contactosChunks.length,
+          data: subChunk
+        });
+      });
+
+      // Datos pequeños van en chunks individuales
+      chunks.push({ type: 'asesores', data: data.asesores });
+      chunks.push({ type: 'clientes', data: data.clientes });
+      chunks.push({ type: 'potenciales', data: data.potenciales });
+      chunks.push({ type: 'sucursales', data: data.sucursales });
 
       // Guardar cada chunk
       let savedChunks = 0;
@@ -269,7 +354,7 @@
 
           cache.put(chunkKey, chunkJson, duration);
           savedChunks++;
-          Logger.log(`💾 Chunk ${i} guardado (${chunkSizeKB} KB)`);
+          Logger.log(`💾 Chunk ${i} (${chunks[i].type}) guardado (${chunkSizeKB} KB)`);
         } catch (e) {
           Logger.log(`⚠️ Error guardando chunk ${i}: ${e.message}`);
         }

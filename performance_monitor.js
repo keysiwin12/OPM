@@ -118,7 +118,7 @@ function testOptimizacionAsesores() {
   const time2 = ((Date.now() - start2) / 1000).toFixed(2);
   Logger.log(`⏱️ Tiempo: ${time2}s`);
 
-  const mejora = ((1 - (parseFloat(time2) / parseFloat(time1))) * 100).toFixed(1);
+  const mejora = ((1 - (parseFloat(time2) / parseFloat(time))) * 100).toFixed(1);
   Logger.log(`🎯 Mejora con cache: ${mejora}%`);
 }
 
