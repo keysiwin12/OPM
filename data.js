@@ -145,15 +145,23 @@
    * 📦 Cache de datos PARTICIONADO para evitar lecturas repetidas de Sheets
    * Cache dura 1 hora (3600 segundos)
    * Los datos se dividen en múltiples entradas para evitar límite de 100KB
+   *
+   * IMPORTANTE: Siempre cachea datos SIN filtrar por contactos (versión completa)
+   * El filtrado se aplica DESPUÉS según el caso de uso
+   *
+   * @param {Object} options - Opciones de filtrado (aplicadas DESPUÉS del cache)
+   * @param {boolean} options.soloClientesConContactos - Si true, filtra clientes sin contactos
    */
-  function getAllDataCached() {
+  function getAllDataCached(options = {}) {
     const cache = CacheService.getScriptCache();
     const CACHE_DURATION = 3600; // 1 hora
-    const CACHE_VERSION = 'V2'; // Cambiado a V2 para nueva estructura
+    const CACHE_VERSION = 'V3'; // V3: Cachea versión completa, filtra después
 
     // Verificar si existe metadata del cache
     const metadataKey = `ALL_DATA_${CACHE_VERSION}_META`;
     const metadata = cache.get(metadataKey);
+
+    let data;
 
     if (metadata) {
       try {
@@ -161,38 +169,83 @@
         Logger.log(`📦 Datos encontrados en cache (${meta.chunks} partes)`);
 
         // Reconstruir datos desde múltiples entradas
-        const data = {};
+        data = {};
         for (let i = 0; i < meta.chunks; i++) {
           const chunkKey = `ALL_DATA_${CACHE_VERSION}_${i}`;
           const chunkData = cache.get(chunkKey);
           if (!chunkData) {
             Logger.log(`⚠️ Falta chunk ${i}, recargando todo...`);
-            return loadAndCacheData(cache, CACHE_VERSION, CACHE_DURATION);
+            return loadAndCacheData(cache, CACHE_VERSION, CACHE_DURATION, options);
           }
           const chunk = JSON.parse(chunkData);
           Object.assign(data, chunk);
         }
 
         Logger.log("✅ Datos cargados desde cache particionado");
-        return data;
       } catch (e) {
         Logger.log(`⚠️ Error leyendo cache: ${e.message}`);
+        return loadAndCacheData(cache, CACHE_VERSION, CACHE_DURATION, options);
       }
+    } else {
+      // No hay cache, cargar datos
+      data = loadAndCacheData(cache, CACHE_VERSION, CACHE_DURATION, options);
     }
 
-    // No hay cache, cargar datos
-    return loadAndCacheData(cache, CACHE_VERSION, CACHE_DURATION);
+    // Aplicar filtros DESPUÉS de obtener del cache si es necesario
+    return aplicarFiltrosPostCache(data, options);
+  }
+
+  /**
+   * 🔧 Aplica filtros post-cache según las opciones
+   * Si soloClientesConContactos=true, filtra clientes sin contactos
+   * Si false, retorna todos los datos
+   */
+  function aplicarFiltrosPostCache(data, options = {}) {
+    const soloClientesConContactos = options.soloClientesConContactos ?? true;
+
+    if (!soloClientesConContactos) {
+      // Modo asesores: retornar todo sin filtrar
+      return data;
+    }
+
+    // Modo clientes: filtrar solo clientes con contactos
+    const clientesConContactos = new Set(
+      (data.contactos || []).map(c => toStr(c.cliente)).filter(id => id)
+    );
+
+    const clientesEnHorometro = new Set(
+      (data.horometro || []).map(r => toStr(r.cliente)).filter(id => id)
+    );
+
+    // Solo clientes que tienen AMBOS: máquinas Y contactos
+    const clientesRelevantes = new Set(
+      [...clientesEnHorometro].filter(id => clientesConContactos.has(id))
+    );
+
+    // Filtrar clientes
+    data.clientes = Object.fromEntries(
+      Object.entries(data.clientes || {}).filter(([id]) => clientesRelevantes.has(id))
+    );
+
+    // Filtrar contactos
+    data.contactos = (data.contactos || []).filter(c => clientesRelevantes.has(toStr(c.cliente)));
+
+    Logger.log(`🔍 Filtro aplicado: ${clientesRelevantes.size} clientes con máquinas + contactos`);
+
+    return data;
   }
 
   /**
    * 🔧 Función auxiliar para cargar y cachear datos en partes
+   * SIEMPRE cachea la versión SIN filtrar (más completa)
    */
-  function loadAndCacheData(cache, version, duration) {
+  function loadAndCacheData(cache, version, duration, options) {
     Logger.log("📊 Cargando datos desde Sheets (esto puede tardar)...");
     const startTime = Date.now();
-    const data = getAllData();
+    // IMPORTANTE: Siempre carga SIN filtrar para maximizar reutilización del cache
+    const data = getAllData({ soloClientesConContactos: false });
     const loadTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    Logger.log(`✅ Datos cargados en ${loadTime}s`);
+    Logger.log(`✅ Datos cargados en ${loadTime}s (versión completa para cache)`);
 
     // Dividir datos en partes más pequeñas para cachear
     try {
@@ -239,8 +292,11 @@
 
   /**
    * 🚀 OPTIMIZADO - Carga solo datos necesarios, pre-filtrados
+   * @param {Object} options - Opciones de filtrado
+   * @param {boolean} options.soloClientesConContactos - Si true, filtra clientes sin contactos (default: true)
    */
-  function getAllData() {
+  function getAllData(options = {}) {
+    const soloClientesConContactos = options.soloClientesConContactos ?? true;
     const data = {};
 
     // Carga datos pre-filtrados (ya no hay que filtrar por línea aquí)
@@ -252,8 +308,15 @@
     const asesoresEnUso = new Set(data.horometro.map(r => toStr(r.id_asesor)).filter(id => id));
     const clientesConContactos = new Set(data.contactos.map(c => toStr(c.cliente)).filter(id => id));
 
-    // Solo clientes que tienen AMBOS: máquinas críticas Y contactos válidos
-    const clientesRelevantes = new Set([...clientesEnUso].filter(id => clientesConContactos.has(id)));
+    // Determinar clientes relevantes según el modo
+    let clientesRelevantes;
+    if (soloClientesConContactos) {
+      // Para envío a CLIENTES: Solo clientes con máquinas críticas Y contactos válidos
+      clientesRelevantes = new Set([...clientesEnUso].filter(id => clientesConContactos.has(id)));
+    } else {
+      // Para envío a ASESORES: Todos los clientes con máquinas críticas
+      clientesRelevantes = clientesEnUso;
+    }
 
     // Cargar diccionarios completos
     const todosAsesores = getRawAsesores();
@@ -280,13 +343,16 @@
     // Potenciales se mantiene igual (es pequeño)
     data.potenciales = getRawPotenciales();
 
-    // Filtrar contactos solo de clientes relevantes
-    data.contactos = data.contactos.filter(c => clientesRelevantes.has(toStr(c.cliente)));
+    // Filtrar contactos según el modo
+    if (soloClientesConContactos) {
+      data.contactos = data.contactos.filter(c => clientesRelevantes.has(toStr(c.cliente)));
+    }
+    // Si no filtramos por contactos, los dejamos todos (ya están pre-filtrados con email válido)
 
-    Logger.log(`📊 Datos optimizados cargados:`);
+    Logger.log(`📊 Datos optimizados cargados (modo: ${soloClientesConContactos ? 'clientes' : 'asesores'}):`);
     Logger.log(`   - Máquinas: ${data.horometro.length} (solo críticas/desconectadas)`);
     Logger.log(`   - Contactos: ${data.contactos.length} (solo válidos con notificación)`);
-    Logger.log(`   - Clientes: ${Object.keys(data.clientes).length} (solo con máquinas + contactos)`);
+    Logger.log(`   - Clientes: ${Object.keys(data.clientes).length} ${soloClientesConContactos ? '(con máquinas + contactos)' : '(con máquinas críticas)'}`);
     Logger.log(`   - Asesores: ${Object.keys(data.asesores).length} (solo en uso)`);
 
     return data;
@@ -299,28 +365,31 @@
   function limpiarCacheDatos() {
     const cache = CacheService.getScriptCache();
 
-    // Limpiar versión V2 (particionado)
-    const version = 'V2';
-    const metadataKey = `ALL_DATA_${version}_META`;
-    const metadata = cache.get(metadataKey);
+    // Limpiar todas las versiones (V1, V2, V3)
+    const versions = ['V1', 'V2', 'V3'];
 
-    if (metadata) {
-      try {
-        const meta = JSON.parse(metadata);
-        for (let i = 0; i < meta.chunks; i++) {
-          cache.remove(`ALL_DATA_${version}_${i}`);
+    versions.forEach(version => {
+      const metadataKey = `ALL_DATA_${version}_META`;
+      const metadata = cache.get(metadataKey);
+
+      if (metadata) {
+        try {
+          const meta = JSON.parse(metadata);
+          for (let i = 0; i < meta.chunks; i++) {
+            cache.remove(`ALL_DATA_${version}_${i}`);
+          }
+          cache.remove(metadataKey);
+          Logger.log(`🗑️ Cache ${version} limpiado (${meta.chunks} partes)`);
+        } catch (e) {
+          Logger.log(`⚠️ Error limpiando cache ${version}: ` + e.message);
         }
-        cache.remove(metadataKey);
-        Logger.log(`🗑️ Cache particionado limpiado (${meta.chunks} partes)`);
-      } catch (e) {
-        Logger.log("⚠️ Error limpiando cache: " + e.message);
       }
-    }
+    });
 
-    // Limpiar versión V1 antigua por si acaso
+    // Limpiar versión V1 antigua (sin metadata)
     cache.remove('ALL_DATA_V1');
 
-    Logger.log("🗑️ Cache de datos limpiado");
+    Logger.log("✅ Cache de datos limpiado completamente");
   }
 
 
@@ -367,7 +436,8 @@
 
   // Agrupa las máquinas por cliente según el modo de análisis ("mantenimiento" o "reconexion").
   function getMachinesGroupedByClient(mode = "mantenimiento") {
-    const all = getAllDataCached(); // 👈 Ahora usa cache
+    // 👉 Modo CLIENTES: soloClientesConContactos = true (solo clientes con contactos válidos)
+    const all = getAllDataCached({ soloClientesConContactos: true });
     const { horometro: data, asesores, clientes, contactos } = all;
 
     // Detectar todos los clientes únicos en el dataset
@@ -411,10 +481,12 @@
  * - Un solo bucle en lugar de bucles anidados
  * - Pre-agrupa datos por cliente para evitar filtrados repetidos
  * - Rendimiento mejorado ~40-60%
+ * - INCLUYE TODAS las máquinas críticas, aunque los clientes no tengan contactos
  */
 function getMachinesGroupedByAsesor() {
   const startTime = Date.now();
-  const all = getAllDataCached(); // 👈 Usa cache
+  // 👉 Modo ASESORES: soloClientesConContactos = false (incluye todos los clientes con máquinas críticas)
+  const all = getAllDataCached({ soloClientesConContactos: false });
   const { horometro: data, asesores, clientes, potenciales, sucursales } = all;
 
   const MONTO_RECONEXION = 799.99;
