@@ -462,6 +462,9 @@ function enviarCorreosMantenimiento() {
   // 🔹 Obtener recursos comunes
   const num_semana = obtenerNumeroSemana();
 
+  // ⚡ OPTIMIZACIÓN: Cargar TODAS las imágenes UNA SOLA VEZ al inicio
+  const todasLasImagenes = getInlineImagesCached();
+
   clientes.forEach(cliente => {
     const maquinasMto  = cliente.maquinas_mto  || [];
     const maquinasReco = cliente.maquinas_reco || [];
@@ -477,14 +480,19 @@ function enviarCorreosMantenimiento() {
       tieneMto ? "OPM" :
       "RECONEXIÓN"
     ;
-    
-    let inlineImages;
 
+    // ⚡ Usar imágenes del cache, seleccionando solo las necesarias
+    let inlineImages;
     if(tieneReco) {
-      inlineImages = getInlineImagesCached();
-    }
-    else {
-      inlineImages = getInlineImagesCached(['cabecera', 'pie','paquete']);
+      // Correo con reconexión: usar TODAS las imágenes
+      inlineImages = todasLasImagenes;
+    } else {
+      // Correo solo OPM: usar solo cabecera, pie y paquete
+      inlineImages = {
+        cabecera: todasLasImagenes.cabecera,
+        pie: todasLasImagenes.pie,
+        paquete: todasLasImagenes.paquete
+      };
     }
 
     // 🔹 Construir tablas HTML (solo si hay datos)
