@@ -479,12 +479,12 @@ function enviarCorreosMantenimiento() {
     ;
     
     let inlineImages;
-  
+
     if(tieneReco) {
-      inlineImages = getInlineImages();
+      inlineImages = getInlineImagesCached();
     }
     else {
-      inlineImages = getInlineImages(['cabecera', 'pie','paquete']);
+      inlineImages = getInlineImagesCached(['cabecera', 'pie','paquete']);
     }
 
     // 🔹 Construir tablas HTML (solo si hay datos)
@@ -565,7 +565,7 @@ function enviarCorreosMantenimientoAsesores() {
     return;
   }
 
-  const inlineImages = getInlineImages(['cabecera']);
+  const inlineImages = getInlineImagesCached(['cabecera']);
   const num_semana = obtenerNumeroSemana();
 
   asesores.forEach(asesor => {

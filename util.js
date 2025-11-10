@@ -153,6 +153,68 @@ const IMG_PIE_ID      = "1JxcYdB7ZFHZi1CGk5SgVtoB6ir74rnbF";
 const IMG_PAQUETE_AD = "1cTwLrbF8lVtslGnz50cIac7drcHbAFF7";
 const IMG_RECONEXION_AD = "1uErtJNjoAAok4saAJpgbMjEsVWFauW_j";
 
+/**
+ * 📦 VERSIÓN CACHEADA - Cache de imágenes en memoria por ejecución
+ * Las imágenes se cargan una sola vez y se reutilizan
+ * Reduce tiempo de acceso a Drive significativamente
+ */
+function getInlineImagesCached(keys) {
+  // Cache en memoria global (dura toda la ejecución del script)
+  if (!globalThis._IMAGE_CACHE) {
+    globalThis._IMAGE_CACHE = {};
+  }
+
+  const cacheKey = keys ? keys.sort().join('_') : 'ALL';
+
+  // Si ya está en cache, retornar inmediatamente
+  if (globalThis._IMAGE_CACHE[cacheKey]) {
+    Logger.log(`📦 Imágenes cargadas desde cache (${cacheKey})`);
+    return globalThis._IMAGE_CACHE[cacheKey];
+  }
+
+  // Si no está en cache, cargar
+  Logger.log(`🖼️ Cargando imágenes desde Drive (${cacheKey})...`);
+  const startTime = Date.now();
+
+  const allImages = {};
+
+  // Cargar solo las imágenes necesarias según las claves
+  const keysToLoad = keys && keys.length > 0 ? keys : ['cabecera', 'pie', 'paquete', 'reconexion'];
+
+  keysToLoad.forEach(key => {
+    try {
+      switch(key) {
+        case 'cabecera':
+          allImages.cabecera = DriveApp.getFileById(IMG_CABECERA_ID).getBlob();
+          break;
+        case 'pie':
+          allImages.pie = DriveApp.getFileById(IMG_PIE_ID).getBlob();
+          break;
+        case 'paquete':
+          allImages.paquete = DriveApp.getFileById(IMG_PAQUETE_AD).getBlob();
+          break;
+        case 'reconexion':
+          allImages.reconexion = DriveApp.getFileById(IMG_RECONEXION_AD).getBlob();
+          break;
+      }
+    } catch (e) {
+      Logger.log(`⚠️ Error cargando imagen ${key}: ${e.message}`);
+    }
+  });
+
+  const loadTime = ((Date.now() - startTime) / 1000).toFixed(2);
+  Logger.log(`✅ Imágenes cargadas en ${loadTime}s`);
+
+  // Guardar en cache
+  globalThis._IMAGE_CACHE[cacheKey] = allImages;
+
+  return allImages;
+}
+
+/**
+ * 🔧 Función original (mantener por compatibilidad)
+ * Recomendado: migrar a getInlineImagesCached()
+ */
 function getInlineImages(keys) {
   // Diccionario de todas las imágenes disponibles
   const allImages = {
@@ -176,6 +238,16 @@ function getInlineImages(keys) {
   });
 
   return selectedImages;
+}
+
+/**
+ * 🗑️ Limpia el cache de imágenes manualmente
+ */
+function limpiarCacheImagenes() {
+  if (globalThis._IMAGE_CACHE) {
+    globalThis._IMAGE_CACHE = {};
+    Logger.log("🗑️ Cache de imágenes limpiado");
+  }
 }
 
 
