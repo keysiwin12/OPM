@@ -264,7 +264,7 @@
    * 🔧 Función auxiliar para dividir un array en sub-arrays de tamaño máximo
    * Asegura que cada sub-array quepa en el límite de 100KB del cache
    */
-  function dividirArrayEnChunks(arr, maxSizeKB = 90) {
+  function dividirArrayEnChunks(arr, maxSizeKB = 75) {
     if (!arr || arr.length === 0) return [arr];
 
     const subChunks = [];
@@ -273,15 +273,20 @@
     for (let i = 0; i < arr.length; i++) {
       currentChunk.push(arr[i]);
 
-      // Cada 50 elementos, verificar tamaño
-      if (currentChunk.length % 50 === 0) {
+      // Verificar cada 10 elementos o si ya tenemos 100+ elementos
+      if (currentChunk.length % 10 === 0 || currentChunk.length >= 100) {
         const testJson = JSON.stringify(currentChunk);
         const sizeKB = Utilities.newBlob(testJson).getBytes().length / 1024;
 
+        // Si excede el límite, guardar el chunk anterior y empezar uno nuevo
         if (sizeKB > maxSizeKB) {
           // Remover el último elemento y guardar el chunk
           const ultimo = currentChunk.pop();
-          subChunks.push([...currentChunk]);
+
+          if (currentChunk.length > 0) {
+            subChunks.push([...currentChunk]);
+          }
+
           currentChunk = [ultimo];
         }
       }
