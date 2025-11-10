@@ -21,10 +21,10 @@ function testCacheDatos() {
   const data1 = getAllDataCached();
   const time1 = ((Date.now() - start1) / 1000).toFixed(2);
   Logger.log(`⏱️ Tiempo: ${time1}s`);
-  Logger.log(`📦 Horómetro: ${data1.horometro.length} registros`);
-  Logger.log(`👥 Contactos: ${data1.contactos.length} registros`);
-  Logger.log(`🧑‍💼 Asesores: ${Object.keys(data1.asesores).length} registros`);
-  Logger.log(`🏢 Clientes: ${Object.keys(data1.clientes).length} registros`);
+  Logger.log(`📦 Horómetro: ${data1.horometro.length} registros (pre-filtrados)`);
+  Logger.log(`👥 Contactos: ${data1.contactos.length} registros (solo válidos)`);
+  Logger.log(`🧑‍💼 Asesores: ${Object.keys(data1.asesores).length} registros (solo en uso)`);
+  Logger.log(`🏢 Clientes: ${Object.keys(data1.clientes).length} registros (con máquinas + contactos)`);
 
   // Segunda ejecución (con cache)
   Logger.log("\n📦 Segunda ejecución (CON CACHE):");
@@ -272,6 +272,77 @@ function mostrarEstadisticasCache() {
     Logger.log(`\n🖼️ Cache de imágenes activo: ${Object.keys(globalThis._IMAGE_CACHE).length} conjuntos`);
   } else {
     Logger.log(`\n🖼️ Cache de imágenes: vacío`);
+  }
+
+  Logger.log("=".repeat(60));
+}
+
+/**
+ * 📊 Compara tamaño de datos ANTES vs DESPUÉS de optimización
+ * Muestra cuánto se redujo el volumen de datos
+ */
+function compararTamanioDatos() {
+  Logger.log("=".repeat(60));
+  Logger.log("📊 COMPARACIÓN DE TAMAÑO DE DATOS");
+  Logger.log("=".repeat(60));
+
+  // Simular carga SIN filtros (comentando temporalmente)
+  Logger.log("\n📥 Cargando datos SIN optimización...");
+  const startSin = Date.now();
+
+  // Cargar todo sin filtros
+  const horometroCompleto = readSheetAsObjects('Horómetro');
+  const contactosCompletos = readSheetAsObjects('Z_CONTACTOS_CLIENTES');
+  const todosAsesores = getRawAsesores();
+  const todosClientes = getRawClientes();
+  const todasSucursales = getRawSucursales();
+
+  const timeSin = ((Date.now() - startSin) / 1000).toFixed(2);
+
+  // Calcular tamaño aproximado en KB
+  const sizeSin = new Blob([JSON.stringify({
+    horometro: horometroCompleto,
+    contactos: contactosCompletos,
+    asesores: todosAsesores,
+    clientes: todosClientes,
+    sucursales: todasSucursales
+  })]).getSize() / 1024;
+
+  Logger.log(`✅ Cargado en ${timeSin}s`);
+  Logger.log(`📦 Horómetro: ${horometroCompleto.length} registros`);
+  Logger.log(`👥 Contactos: ${contactosCompletos.length} registros`);
+  Logger.log(`🧑‍💼 Asesores: ${Object.keys(todosAsesores).length} registros`);
+  Logger.log(`🏢 Clientes: ${Object.keys(todosClientes).length} registros`);
+  Logger.log(`💾 Tamaño: ${sizeSin.toFixed(2)} KB`);
+
+  // Cargar CON filtros
+  Logger.log("\n📥 Cargando datos CON optimización...");
+  const startCon = Date.now();
+  const dataOptimizada = getAllData();
+  const timeCon = ((Date.now() - startCon) / 1000).toFixed(2);
+
+  const sizeCon = new Blob([JSON.stringify(dataOptimizada)]).getSize() / 1024;
+
+  Logger.log(`✅ Cargado en ${timeCon}s`);
+  Logger.log(`💾 Tamaño: ${sizeCon.toFixed(2)} KB`);
+
+  // Comparación
+  const reduccionRegistros = ((1 - (dataOptimizada.horometro.length / horometroCompleto.length)) * 100).toFixed(1);
+  const reduccionContactos = ((1 - (dataOptimizada.contactos.length / contactosCompletos.length)) * 100).toFixed(1);
+  const reduccionTamanio = ((1 - (sizeCon / sizeSin)) * 100).toFixed(1);
+
+  Logger.log("\n" + "=".repeat(60));
+  Logger.log("🎯 RESUMEN DE REDUCCIÓN:");
+  Logger.log("=".repeat(60));
+  Logger.log(`📉 Máquinas: -${reduccionRegistros}% (de ${horometroCompleto.length} a ${dataOptimizada.horometro.length})`);
+  Logger.log(`📉 Contactos: -${reduccionContactos}% (de ${contactosCompletos.length} a ${dataOptimizada.contactos.length})`);
+  Logger.log(`📉 Tamaño total: -${reduccionTamanio}% (de ${sizeSin.toFixed(2)} KB a ${sizeCon.toFixed(2)} KB)`);
+  Logger.log(`⚡ Ahorro: ${(sizeSin - sizeCon).toFixed(2)} KB`);
+
+  if (sizeCon < 100) {
+    Logger.log(`\n✅ EXCELENTE: ${sizeCon.toFixed(2)} KB cabe perfectamente en cache (límite: 100 KB por entrada)`);
+  } else {
+    Logger.log(`\n⚠️ ADVERTENCIA: ${sizeCon.toFixed(2)} KB aún requiere cache particionado`);
   }
 
   Logger.log("=".repeat(60));
