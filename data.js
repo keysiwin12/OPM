@@ -86,6 +86,35 @@ function readSheetAsObjects(sheetName, transformer = null) {
     });
   }
 
+  /**
+   * 📋 NUEVO - Carga la relación Cliente → Asesor desde hoja CARTERA
+   * @returns {Array} Array de objetos {id_cliente, id_asesor}
+   */
+  function getRawCartera() {
+    const data = readSheetAsObjects('CARTERA');
+
+    if (!data || data.length === 0) {
+      Logger.log("⚠️ Hoja CARTERA vacía o no encontrada");
+      return [];
+    }
+
+    // Limpiar y validar datos
+    const carteraLimpia = data
+      .filter(row => {
+        const cliente = String(row.id_cliente || "").trim();
+        const asesor = String(row.id_asesor || "").trim();
+        return cliente && asesor; // Ambos deben existir
+      })
+      .map(row => ({
+        id_cliente: String(row.id_cliente || "").trim(),
+        id_asesor: String(row.id_asesor || "").trim()
+      }));
+
+    Logger.log(`📋 CARTERA cargada: ${carteraLimpia.length} relaciones cliente-asesor`);
+
+    return carteraLimpia;
+  }
+
   function getRawAsesores() {
     const data = readSheetAsObjects('Z_ASESORES');
     const asesores = {};
@@ -175,7 +204,8 @@ function readSheetAsObjects(sheetName, transformer = null) {
           asesores: {},
           clientes: {},
           potenciales: [],
-          sucursales: {}
+          sucursales: {},
+          cartera: [] // 🆕 Incluir CARTERA
         };
 
         for (let i = 0; i < meta.chunks; i++) {
@@ -201,6 +231,8 @@ function readSheetAsObjects(sheetName, transformer = null) {
             data.potenciales = chunk.data;
           } else if (chunk.type === 'sucursales') {
             data.sucursales = chunk.data;
+          } else if (chunk.type === 'cartera') { // 🆕 Reconstruir CARTERA
+            data.cartera = data.cartera.concat(chunk.data);
           }
         }
 
@@ -218,6 +250,95 @@ function readSheetAsObjects(sheetName, transformer = null) {
 
     // Aplicar filtros DESPUÉS de obtener del cache si es necesario
     return aplicarFiltrosPostCache(data, options);
+  }
+
+  /**
+   * 🔧 NUEVO - Crea un Map de Cliente → [Asesores] desde CARTERA
+   * Permite búsqueda rápida O(1) de los asesores de un cliente
+   * @param {Array} carteraArray - Array de {id_cliente, id_asesor}
+   * @returns {Map} Map<id_cliente, Array<id_asesor>>
+   */
+  function crearMapaCartera(carteraArray) {
+    const mapa = new Map();
+
+    if (!carteraArray || carteraArray.length === 0) {
+      return mapa;
+    }
+
+    carteraArray.forEach(row => {
+      const cliente = row.id_cliente;
+      const asesor = row.id_asesor;
+
+      if (!mapa.has(cliente)) {
+        mapa.set(cliente, []);
+      }
+
+      // Evitar duplicados: solo agregar si no existe
+      if (!mapa.get(cliente).includes(asesor)) {
+        mapa.get(cliente).push(asesor);
+      }
+    });
+
+    // Logs informativos
+    const clientesUnicos = mapa.size;
+    const asesoresUnicos = new Set(carteraArray.map(r => r.id_asesor)).size;
+    Logger.log(`📊 Map CARTERA creado: ${clientesUnicos} clientes, ${asesoresUnicos} asesores únicos`);
+
+    return mapa;
+  }
+
+  /**
+   * 🔧 NUEVO - Enriquece cada máquina con sus asesores desde CARTERA
+   * Agrega campo 'asesores' (array) a cada máquina
+   * @param {Array} horometro - Array de máquinas
+   * @param {Map} carteraMap - Map de cliente → asesores
+   * @returns {Array} Horometro enriquecido
+   */
+  function enriquecerMaquinasConAsesores(horometro, carteraMap) {
+    if (!horometro || horometro.length === 0) {
+      return horometro;
+    }
+
+    let conAsesor = 0;
+    let sinAsesor = 0;
+
+    horometro.forEach(maquina => {
+      const idCliente = toStr(maquina.cliente);
+      const asesores = carteraMap.get(idCliente) || [];
+
+      // Agregar array de asesores a la máquina
+      maquina.asesores = asesores;
+
+      if (asesores.length > 0) {
+        conAsesor++;
+      } else {
+        sinAsesor++;
+        Logger.log(`⚠️ Cliente ${idCliente} sin asesor en CARTERA`);
+      }
+    });
+
+    Logger.log(`✅ Máquinas enriquecidas: ${conAsesor} con asesor, ${sinAsesor} sin asesor`);
+
+    return horometro;
+  }
+
+  /**
+   * 🔧 NUEVO - Obtiene los asesores de un cliente desde CARTERA
+   * @param {string} id_cliente - ID del cliente
+   * @param {Object} data - Objeto con data.cartera
+   * @returns {Array} Array de id_asesor
+   */
+  function obtenerAsesoresDelCliente(id_cliente, data) {
+    if (!data.cartera || data.cartera.length === 0) {
+      return [];
+    }
+
+    const asesores = data.cartera
+      .filter(row => toStr(row.id_cliente) === toStr(id_cliente))
+      .map(row => row.id_asesor);
+
+    // Eliminar duplicados
+    return [...new Set(asesores)];
   }
 
   /**
@@ -351,6 +472,7 @@ function readSheetAsObjects(sheetName, transformer = null) {
       chunks.push({ type: 'clientes', data: data.clientes });
       chunks.push({ type: 'potenciales', data: data.potenciales });
       chunks.push({ type: 'sucursales', data: data.sucursales });
+      chunks.push({ type: 'cartera', data: data.cartera }); // 🆕 Cachear CARTERA
 
       // Guardar cada chunk (optimizado - sin calcular tamaño)
       let savedChunks = 0;
@@ -400,11 +522,25 @@ function readSheetAsObjects(sheetName, transformer = null) {
     // Carga datos pre-filtrados (ya no hay que filtrar por línea aquí)
     data.horometro = getRawHorometroData(); // Ya viene filtrado por línea, aviso y conexión
     data.contactos = getRawContacts(); // Ya viene filtrado por correo válido y notificación activa
+    data.cartera = getRawCartera(); // 🆕 Carga relación cliente → asesor
 
-    // Obtener IDs únicos de clientes y asesores que realmente se usan
+    // 🆕 Crear Map de CARTERA y enriquecer máquinas con asesores
+    const carteraMap = crearMapaCartera(data.cartera);
+    enriquecerMaquinasConAsesores(data.horometro, carteraMap);
+
+    // Obtener IDs únicos de clientes que realmente se usan
     const clientesEnUso = new Set(data.horometro.map(r => toStr(r.cliente)).filter(id => id));
-    const asesoresEnUso = new Set(data.horometro.map(r => toStr(r.id_asesor)).filter(id => id));
     const clientesConContactos = new Set(data.contactos.map(c => toStr(c.cliente)).filter(id => id));
+
+    // 🆕 Obtener asesores desde el array asesores[] de cada máquina
+    const asesoresEnUso = new Set();
+    data.horometro.forEach(m => {
+      if (m.asesores && Array.isArray(m.asesores)) {
+        m.asesores.forEach(id_asesor => {
+          if (id_asesor) asesoresEnUso.add(toStr(id_asesor));
+        });
+      }
+    });
 
     // Determinar clientes relevantes según el modo
     let clientesRelevantes;
@@ -452,6 +588,7 @@ function readSheetAsObjects(sheetName, transformer = null) {
     Logger.log(`   - Contactos: ${data.contactos.length} (solo válidos con notificación)`);
     Logger.log(`   - Clientes: ${Object.keys(data.clientes).length} ${soloClientesConContactos ? '(con máquinas + contactos)' : '(con máquinas críticas)'}`);
     Logger.log(`   - Asesores: ${Object.keys(data.asesores).length} (solo en uso)`);
+    Logger.log(`   - CARTERA: ${data.cartera.length} relaciones cliente-asesor`);
 
     return data;
   }
@@ -608,6 +745,7 @@ function getMachinesGroupedByAsesor() {
 
   // 🚀 OPTIMIZACIÓN: Procesar directamente el array de data sin agrupar por cliente primero
   // Esto elimina bucles anidados y reduce complejidad de O(n²) a O(n)
+  // 🆕 CARTERA: Ahora cada máquina tiene array asesores[], puede aparecer en múltiples reportes
   (data || []).forEach(row => {
     const clienteId = toStr(row.cliente);
     if (!clienteId) return;
@@ -619,67 +757,83 @@ function getMachinesGroupedByAsesor() {
     // Si no cumple ningún criterio, saltar
     if (!esMto && !esReco) return;
 
-    const idAsesor = toStr(row.id_asesor);
-    const asesorRef = asesores[idAsesor];
-    if (!idAsesor || !asesorRef) return;
+    // 🆕 Obtener array de asesores desde CARTERA (ya enriquecido por getAllData)
+    const asesoresMaquina = row.asesores || [];
 
-    // Crear grupo del asesor si no existe
-    if (!grouped[idAsesor]) {
-      const suc = asesorRef.sucursal || "";
-      const emailSuc = sucursales ? sucursales[suc] || "" : "";
+    // Si la máquina no tiene asesores asignados, saltarla
+    if (asesoresMaquina.length === 0) {
+      Logger.log(`⚠️ Máquina ${row.num_serie} sin asesor (cliente ${clienteId})`);
+      return;
+    }
 
-      grouped[idAsesor] = {
-        id_asesor: idAsesor,
-        nombre_completo: asesorRef.nombre_completo,
-        email: asesorRef.email,
-        sucursal: suc,
-        email_sucursal: emailSuc,
-        maquinas: [],
-        maquinas_mto: [],
-        maquinas_reco: [],
-        total_mto_usd: 0,
-        total_reco_usd: 0,
-        total_general_usd: 0,
-        total_maquinas: 0
+    // 🆕 Iterar por CADA asesor de la máquina (puede ser múltiple)
+    asesoresMaquina.forEach(idAsesor => {
+      const idAsesorStr = toStr(idAsesor);
+      const asesorRef = asesores[idAsesorStr];
+
+      if (!idAsesorStr || !asesorRef) {
+        Logger.log(`⚠️ Asesor ${idAsesorStr} no encontrado en diccionario`);
+        return;
+      }
+
+      // Crear grupo del asesor si no existe
+      if (!grouped[idAsesorStr]) {
+        const suc = asesorRef.sucursal || "";
+        const emailSuc = sucursales ? sucursales[suc] || "" : "";
+
+        grouped[idAsesorStr] = {
+          id_asesor: idAsesorStr,
+          nombre_completo: asesorRef.nombre_completo,
+          email: asesorRef.email,
+          sucursal: suc,
+          email_sucursal: emailSuc,
+          maquinas: [],
+          maquinas_mto: [],
+          maquinas_reco: [],
+          total_mto_usd: 0,
+          total_reco_usd: 0,
+          total_general_usd: 0,
+          total_maquinas: 0
+        };
+      }
+
+      // Enriquecer la máquina con datos adicionales
+      const lat = toStr(row.ultima_latitud);
+      const lng = toStr(row.ultima_longitud);
+      const m = {
+        ...row,
+        url: (lat && lng) ? `https://www.google.com/maps?q=${lat},${lng}` : "SIN_UBICACION",
+        asesor: asesorRef, // Referencia al asesor actual del bucle
+        cliente_razon_social: clientes[clienteId] || ""
       };
-    }
 
-    // Enriquecer la máquina con datos adicionales
-    const lat = toStr(row.ultima_latitud);
-    const lng = toStr(row.ultima_longitud);
-    const m = {
-      ...row,
-      url: (lat && lng) ? `https://www.google.com/maps?q=${lat},${lng}` : "SIN_UBICACION",
-      asesor: asesorRef,
-      cliente_razon_social: clientes[clienteId] || ""
-    };
+      // Calcular precio según tipo
+      if (esMto) {
+        const horasAjustadas = intervalos_lineas(m.linea, m.familia, Number(m.prox_mto));
+        const linea   = normalizeText(m.linea);
+        const familia = normalizeText(m.familia);
+        const subfam  = normalizeText(m.subfamilia);
 
-    // Calcular precio según tipo
-    if (esMto) {
-      const horasAjustadas = intervalos_lineas(m.linea, m.familia, Number(m.prox_mto));
-      const linea   = normalizeText(m.linea);
-      const familia = normalizeText(m.familia);
-      const subfam  = normalizeText(m.subfamilia);
+        const clave = (familia === "TRACTOR AGRICOLA")
+          ? `${linea}|${familia}|${subfam}|${horasAjustadas}`
+          : `${linea}|${familia}|${horasAjustadas}`;
 
-      const clave = (familia === "TRACTOR AGRICOLA")
-        ? `${linea}|${familia}|${subfam}|${horasAjustadas}`
-        : `${linea}|${familia}|${horasAjustadas}`;
+        const precio = mapPotenciales.get(clave) || 0;
+        m.precio_estimado = precio;
 
-      const precio = mapPotenciales.get(clave) || 0;
-      m.precio_estimado = precio;
+        grouped[idAsesorStr].maquinas_mto.push(m);
+        grouped[idAsesorStr].total_mto_usd += precio;
+      }
 
-      grouped[idAsesor].maquinas_mto.push(m);
-      grouped[idAsesor].total_mto_usd += precio;
-    }
+      if (esReco) {
+        m.precio_estimado = MONTO_RECONEXION;
+        grouped[idAsesorStr].maquinas_reco.push(m);
+        grouped[idAsesorStr].total_reco_usd += MONTO_RECONEXION;
+      }
 
-    if (esReco) {
-      m.precio_estimado = MONTO_RECONEXION;
-      grouped[idAsesor].maquinas_reco.push(m);
-      grouped[idAsesor].total_reco_usd += MONTO_RECONEXION;
-    }
-
-    grouped[idAsesor].maquinas.push(m);
-    grouped[idAsesor].total_maquinas++;
+      grouped[idAsesorStr].maquinas.push(m);
+      grouped[idAsesorStr].total_maquinas++;
+    }); // Fin del forEach por cada asesor
   });
 
   // Calcular totales

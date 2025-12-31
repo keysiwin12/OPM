@@ -456,6 +456,9 @@ function enviarCorreosMantenimiento() {
     return;
   }
 
+  // 🆕 Cargar datos para obtener asesores y CARTERA
+  const data = getAllDataCached({ soloClientesConContactos: true });
+
   // 🔹 Obtener recursos comunes
   const num_semana = obtenerNumeroSemana();
 
@@ -504,13 +507,12 @@ function enviarCorreosMantenimiento() {
       htmlTablaReco
     });
 
-    // 🔹 CC asesores únicos (de ambas tablas)
-    const asesoresCC = Array.from(new Set(
-      [...maquinasMto, ...maquinasReco]
-        .map(m => m?.asesor?.email)
-        .filter(isValidEmail)
-        .map(e => e.trim())
-    ));
+    // 🆕 CC asesores desde CARTERA (obtener todos los asesores del cliente)
+    const idsAsesores = obtenerAsesoresDelCliente(cliente.cliente, data);
+    const asesoresCC = idsAsesores
+      .map(id => data.asesores[id]?.email)
+      .filter(isValidEmail)
+      .map(e => e.trim());
 
     // 🔹 Destinatarios válidos
     const destinatarios = (cliente.contactos || [])
