@@ -52,8 +52,22 @@ function readSheetAsObjects(sheetName, transformer = null) {
   function getRawHorometroData() {
     const allData = readSheetAsObjects('Horómetro');
 
+    // 🚫 Lista de clientes excluidos del sistema OPM
+    const CLIENTES_EXCLUIDOS = new Set([
+      '20285093245',
+      '20537284723',
+      '20602200826',
+      'CGM Usados'
+    ]);
+
     // Pre-filtrar solo máquinas que podrían ser relevantes
     return allData.filter(row => {
+      // 🚫 Excluir clientes específicos
+      const idCliente = String(row.cliente || "").trim();
+      if (CLIENTES_EXCLUIDOS.has(idCliente)) {
+        return false;
+      }
+
       // Filtrar por línea primero (esto ya se hacía después)
       const linea = String(row.linea || "").trim();
       if (!["JD C&F", "JD A&T"].includes(linea)) return false;
