@@ -313,13 +313,6 @@ function probarVIPConAsesores() {
   console.log(JSON.stringify(vip[50], null, 2));
 }
 
-function probarMaquinasPorAsesor() {
-  const asesores = getMachinesGroupedByAsesor();
-  // console.log(asesores)
-  // console.log("MÁQUINAS:", asesores[1].maquinas.length);
-  // Si quieres ver todo su JSON:
-  console.log(JSON.stringify(asesores[0], null, 2));
-}
 
 function probar() {
   datos =  getMachinesGroupedByClient();

@@ -350,9 +350,9 @@ function uuidId(size = 10, prefix = '') {
   return prefix ? `${prefix}-${core}` : core;
 }
 
-const APP_PREFIX = 'OPM';
 
 function getNewId() {
+  const APP_PREFIX = 'OPM';
   return uuidId(10, APP_PREFIX); 
 }
 

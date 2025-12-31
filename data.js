@@ -1,23 +1,23 @@
-  function readSheetAsObjects(sheetName, transformer = null) {
-    const sh = SpreadsheetApp.getActive().getSheetByName(sheetName);
-    if (!sh) return [];
+function readSheetAsObjects(sheetName, transformer = null) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(sheetName);
+  if (!sh) return [];
 
-    const values = sh.getDataRange().getValues();
-    if (values.length < 2) return [];
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) return [];
 
-    const headers = values[0].map(h => String(h).trim());
-    const rows = values.slice(1);
+  const headers = values[0].map(h => String(h).trim());
+  const rows = values.slice(1);
 
-    const data = rows
-      .filter(r => r.some(c => c !== "" && c != null))
-      .map(r => {
-        const obj = {};
-        headers.forEach((h, i) => obj[h] = r[i]);
-        return transformer ? transformer(obj, headers) : obj;
-      });
+  const data = rows
+    .filter(r => r.some(c => c !== "" && c != null))
+    .map(r => {
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = r[i]);
+      return transformer ? transformer(obj, headers) : obj;
+    });
 
-    return data;
-  }
+  return data;
+}
 
 
   function getRawPotenciales() {

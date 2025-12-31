@@ -190,7 +190,6 @@ function generarHTMLMantenimientoCliente(vars) {
   `;
 }
 
-
 function generarHTMLMantenimientoAsesor(vars) {
   const nombreAsesor = (vars.nombreAsesor || "").trim() || "asesor";
   // ✅ Construir las tablas si no fueron pasadas directamente
@@ -198,7 +197,7 @@ function generarHTMLMantenimientoAsesor(vars) {
     ((vars.maquinas_mto && vars.maquinas_mto.length > 0)
       ? construirTablaHTML(vars.maquinas_mto, true, "mantenimiento")
       : "");
-
+  
   const htmlTablaReco = vars.htmlTablaReco ||
     ((vars.maquinas_reco && vars.maquinas_reco.length > 0)
       ? construirTablaHTML(vars.maquinas_reco, true, "reconexion")
@@ -347,7 +346,6 @@ function generarHTMLMantenimientoAsesor(vars) {
   `;
 }
 
-
 function construirTablaHTML(maquinas, esAsesor = false, tipo = "mantenimiento") {
   if (!maquinas || maquinas.length === 0)
     return "<p>No se encontraron máquinas.</p>";
@@ -444,7 +442,6 @@ function construirTablaHTML(maquinas, esAsesor = false, tipo = "mantenimiento") 
     </table>
   `;
 }
-
 
  //📧 Envía correos automáticos de mantenimiento y reconexión (si aplica)
 function enviarCorreosMantenimiento() {
@@ -581,12 +578,6 @@ function enviarCorreosMantenimientoAsesores() {
   let totalMaquinasRegistradas = 0;
 
   asesores.forEach(asesor => {
-
-    const asesores_enviados = ["dllacsahuanga@ipesa.com.pe","jtorresc@ipesa.com.pe","esalirrosas@ipesa.com.pe","enavarro@italtracselva.com.pe","ychapi@ipesa.com.pe","nrodriguez@ipesa.com.pe","ahuaranga@ipesa.com.pe","gpastor@italtracselva.com.pe","jchacon@ipesa.com.pe"];
-    if(asesores_enviados.includes(asesor.email)) {
-      Logger.log("ya enviado" + asesor.email);
-      return;
-    }
 
     const maquinasMto  = asesor.maquinas_mto  || [];
     const maquinasReco = asesor.maquinas_reco || [];
