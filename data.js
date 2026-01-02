@@ -828,11 +828,12 @@ function getMachinesGroupedByAsesor() {
       }
 
       // 🏭 Filtrar por sucursal cercana
-      const sucursalEquipo = row.sucursal_cercana || "";
-      const sucursalAsesor = asesorRef.sucursal || "";
+      const sucursalEquipo = (row.sucursal_cercana || "").trim().toUpperCase();
+      const sucursalAsesor = (asesorRef.sucursal || "").trim().toUpperCase();
 
       // Si equipo tiene sucursal Y no coincide con la del asesor → SALTAR
       if (sucursalEquipo && sucursalEquipo !== sucursalAsesor) {
+        Logger.log(`⚠️ Equipo ${row.num_serie} con sucursal ${sucursalEquipo} no va a asesor ${asesorRef.nombre_completo} (sucursal: ${sucursalAsesor})`);
         return; // Este asesor no recibe este equipo
       }
 
