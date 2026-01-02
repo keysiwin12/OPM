@@ -129,6 +129,35 @@ function readSheetAsObjects(sheetName, transformer = null) {
     return carteraLimpia;
   }
 
+  /**
+   * 📋 NUEVO - Carga la relación Equipo → Sucursal Cercana desde hoja Z_EQUIPOS
+   * @returns {Map} Map<num_serie, sucursal_cercana> para lookup O(1)
+   */
+  function getRawEquipos() {
+    const data = readSheetAsObjects('Z_EQUIPOS');
+
+    if (!data || data.length === 0) {
+      Logger.log("⚠️ Hoja Z_EQUIPOS vacía o no encontrada");
+      return new Map();
+    }
+
+    const equiposMap = new Map();
+
+    data.forEach(row => {
+      const numSerie = String(row.ID_EQUIPO || "").trim();
+      const sucursalCercana = String(row.SUCURSAL_CERCANA || "").trim();
+
+      if (numSerie) {
+        // Guardar sucursal cercana (puede ser vacío)
+        equiposMap.set(numSerie, sucursalCercana);
+      }
+    });
+
+    Logger.log(`🏭 Z_EQUIPOS cargada: ${equiposMap.size} equipos con sucursal cercana`);
+
+    return equiposMap;
+  }
+
   function getRawAsesores() {
     const data = readSheetAsObjects('Z_ASESORES');
     const asesores = {};
@@ -542,6 +571,14 @@ function readSheetAsObjects(sheetName, transformer = null) {
     const carteraMap = crearMapaCartera(data.cartera);
     enriquecerMaquinasConAsesores(data.horometro, carteraMap);
 
+    // 🏭 Cargar Z_EQUIPOS y enriquecer máquinas con sucursal_cercana
+    const equiposMap = getRawEquipos();
+    data.horometro.forEach(maquina => {
+      const numSerie = maquina.num_serie || "";
+      // Si no existe en Z_EQUIPOS, se trata como sucursal vacía
+      maquina.sucursal_cercana = equiposMap.get(numSerie) || "";
+    });
+
     // Obtener IDs únicos de clientes que realmente se usan
     const clientesEnUso = new Set(data.horometro.map(r => toStr(r.cliente)).filter(id => id));
     const clientesConContactos = new Set(data.contactos.map(c => toStr(c.cliente)).filter(id => id));
@@ -789,6 +826,17 @@ function getMachinesGroupedByAsesor() {
         Logger.log(`⚠️ Asesor ${idAsesorStr} no encontrado en diccionario`);
         return;
       }
+
+      // 🏭 Filtrar por sucursal cercana
+      const sucursalEquipo = row.sucursal_cercana || "";
+      const sucursalAsesor = asesorRef.sucursal || "";
+
+      // Si equipo tiene sucursal Y no coincide con la del asesor → SALTAR
+      if (sucursalEquipo && sucursalEquipo !== sucursalAsesor) {
+        return; // Este asesor no recibe este equipo
+      }
+
+      // Si llegó aquí: sucursal vacía O coincide → continuar
 
       // Crear grupo del asesor si no existe
       if (!grouped[idAsesorStr]) {
