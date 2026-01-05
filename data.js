@@ -161,15 +161,33 @@ function readSheetAsObjects(sheetName, transformer = null) {
   function getRawAsesores() {
     const data = readSheetAsObjects('Z_ASESORES');
     const asesores = {};
+    let totalAsesores = 0;
+    let asesoresServicios = 0;
+
     data.forEach(r => {
       const id = String(r.id_asesor || "").trim();
       if (!id) return;
+
+      totalAsesores++;
+
+      // 🔍 Filtrar solo asesores del área "Servicios"
+      const area = String(r.Área || r.Area || "").trim();
+      if (area !== "Servicios") {
+        return; // Saltar asesores que no son de Servicios
+      }
+
+      asesoresServicios++;
+
       asesores[id] = {
         nombre_completo: String(r.nombre_completo || "").trim(),
         email: String(r.email || "").trim(),
-        sucursal : String(r.sucursal || "").trim()
+        sucursal : String(r.sucursal || "").trim(),
+        area: area // Guardar área para referencia
       };
     });
+
+    Logger.log(`👥 Asesores cargados: ${asesoresServicios} de Servicios (${totalAsesores} totales)`);
+
     return asesores;
   }
 
